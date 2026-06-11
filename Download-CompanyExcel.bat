@@ -1,52 +1,61 @@
 @echo off
 chcp 65001 >nul
+title 云犀表格 - 自动更新下载器
 setlocal enabledelayedexpansion
-title Company Excel 一键下载器
 
-set "URL=https://github.com/harryyefeng/company-excel-dist/releases/download/v0.1.0/CompanyExcel-v0.1.0-win-x64.zip"
-set "OUT=%USERPROFILE%\Downloads\CompanyExcel"
-set "ZIP=%OUT%\CompanyExcel.zip"
+REM 永远下载最新版（无需修改版本号）：GitHub release "latest" 固定资源名
+set "URL=https://github.com/harryyefeng/company-excel-dist/releases/latest/download/CloudSheet-win.zip"
+set "OUT=%USERPROFILE%\Downloads\CloudSheet"
+set "ZIP=%OUT%\CloudSheet.zip"
 
 echo ============================================
-echo   Company Excel 安装包 - 多线程极速下载
+echo   云犀表格 - 下载并更新到最新版
 echo ============================================
 echo.
-echo 下载位置: %OUT%
-echo.
+
+echo [1/5] 关闭正在运行的旧程序（避免文件被占用导致更新失败）...
+taskkill /F /IM "云犀表格.exe" >nul 2>&1
+taskkill /F /IM "Company Excel.exe" >nul 2>&1
+timeout /t 2 /nobreak >nul
 
 if not exist "%OUT%" mkdir "%OUT%"
 
-echo [1/3] 正在多线程下载(约 30 秒)...
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$url='%URL%'; $zip='%ZIP%'; $threads=16;" ^
-  "$h=curl.exe -sIL $url; $len=0; foreach($line in $h){ if($line -match '(?i)^content-length:\s*(\d+)'){ $len=[long]$matches[1] } };" ^
-  "if($len -le 0){ Write-Host '获取文件大小失败, 改用单线程...'; curl.exe -L -o $zip $url; exit };" ^
-  "$chunk=[math]::Ceiling($len/$threads); $jobs=@();" ^
-  "for($i=0;$i -lt $threads;$i++){ $s=$i*$chunk; $e=[math]::Min($s+$chunk-1,$len-1); if($s -gt $e){break};" ^
-  "  $jobs+=Start-Job -ScriptBlock { param($u,$a,$b,$idx,$z) curl.exe -s -L -o ($z+'.part'+$idx) -r ($a.ToString()+'-'+$b.ToString()) $u } -ArgumentList $url,$s,$e,$i,$zip };" ^
-  "$jobs | Wait-Job | Out-Null; $jobs | Remove-Job -Force;" ^
-  "$fs=[System.IO.File]::Create($zip); for($i=0;$i -lt $jobs.Count;$i++){ $p=$z=$zip+'.part'+$i; if(Test-Path $p){ $bytes=[System.IO.File]::ReadAllBytes($p); $fs.Write($bytes,0,$bytes.Length); Remove-Item $p -Force } }; $fs.Close();" ^
-  "Write-Host ('下载完成: ' + ([math]::Round((Get-Item $zip).Length/1MB,1)) + ' MB')"
-
-if not exist "%ZIP%" (
+echo [2/5] 下载最新版...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; try { Invoke-WebRequest -Uri '%URL%' -OutFile '%ZIP%' -UseBasicParsing; Write-Host ('下载完成: ' + [math]::Round((Get-Item '%ZIP%').Length/1MB,1) + ' MB') } catch { Write-Host ('下载失败: ' + $_.Exception.Message); exit 1 }"
+if errorlevel 1 (
   echo.
-  echo 下载失败, 请检查网络后重试, 或直接用浏览器打开:
+  echo 下载失败。请在浏览器中打开此链接手动下载：
   echo %URL%
   pause
   exit /b 1
 )
 
-echo.
-echo [2/3] 正在解压...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path '%ZIP%' -DestinationPath '%OUT%' -Force"
+echo [3/5] 清理旧文件...
+REM 删除旧的程序文件夹内容（保留下载的 zip），确保是干净覆盖
+for /d %%D in ("%OUT%\*") do rd /s /q "%%D" >nul 2>&1
 
+echo [4/5] 解压...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; try { Expand-Archive -Path '%ZIP%' -DestinationPath '%OUT%' -Force; Write-Host '解压成功' } catch { Write-Host ('解压失败: ' + $_.Exception.Message); exit 1 }"
+if errorlevel 1 (
+  echo.
+  echo 解压失败，可能是程序还在运行。请手动关闭后重试。
+  pause
+  exit /b 1
+)
+
+echo [5/5] 完成！正在打开...
 echo.
-echo [3/3] 完成!
+echo 安装位置: %OUT%
 echo.
-echo 程序位置: %OUT%\win-unpacked\Company Excel.exe
-echo 登录账号: 找管理员获取(例如 admin / Admin@123)
-echo.
-echo 按任意键打开程序所在文件夹...
-pause >nul
-explorer "%OUT%\win-unpacked"
+
+REM 找到 exe 并打开（兼容新旧文件名）
+if exist "%OUT%\云犀表格.exe" (
+  start "" "%OUT%\云犀表格.exe"
+) else if exist "%OUT%\Company Excel.exe" (
+  start "" "%OUT%\Company Excel.exe"
+) else (
+  echo 已解压，请进入文件夹手动打开 云犀表格.exe
+  explorer "%OUT%"
+)
+
 endlocal
